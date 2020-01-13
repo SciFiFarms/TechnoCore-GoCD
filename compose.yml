@@ -1,7 +1,4 @@
 version: "3.5"
-# You should be able to find & replace all instances of gocd with 
-# your actual_service_name. Then you just need address any places that 
-# typically need changes (designated by comments)
 
 networks:
   gocd:
@@ -9,48 +6,37 @@ networks:
 
 volumes:
   gocd:
-  gocd-db:
+  gocd_agent_1:
 
 secrets:
-  # Secrets format
-  # ${service_name}_${mount_point}:
-  #   name: ${STACK_NAME:-technocore}_${service_name}_${mount_point}
-  # #   external: true
-  gocd_admin_username:
-    name: ${STACK_NAME:-technocore}_gocd_admin_username
+  gocd_gocd_agent_1_password:
+    name: ${STACK_NAME:-technocore}_gocd_gocd_agent_1_password
     external: true
-  gocd_admin_password:
-    name: ${STACK_NAME:-technocore}_gocd_admin_password
-    external: true
-  gocd_gocd-db_username:
-    name: ${STACK_NAME:-technocore}_gocd_gocd-db_username
-    external: true
-  gocd_gocd-db_password:
-    name: ${STACK_NAME:-technocore}_gocd_gocd-db_password
+  gocd_agent_1_gocd_password:
+    name: ${STACK_NAME:-technocore}_gocd_agent_1_gocd_password
     external: true
 
 services:
-  ## Uncomment this if Traefik will be used for routing traffick to this service.
-  #ingress:
-  #  networks:
-  #    - gocd
+  ingress:
+    networks:
+      - gocd
 
   gocd:
     deploy:
       labels:
-      #  - traefik.frontend.rule=$GOCD_ROUTING_LABEL
-      #  - traefik.frontend.priority=$GOCD_ROUTING_LABEL_PRIORITY
-      #  - traefik.port=SET_ME_PLEASE
-      #  - ${TRAEFIK_BASIC_AUTH}
-      #  - traefik.enable=true
-      #  # You'll need to set applicaiton's port here.
-      #  - traefik.tags=ingress 
-      #  - traefik.docker.network=${STACK_NAME:-technocore}_gocd
-      #  # Traefik service that listens to HTTP
-      #  - traefik.redirectorservice.frontend.entryPoints=http
-      #  - traefik.redirectorservice.frontend.redirect.entryPoint=https
-      #  # Traefik service that listens to HTTPS
-      #  - traefik.webservice.frontend.entryPoints=https
+        - traefik.frontend.rule=$GOCD_ROUTING_LABEL
+        - traefik.frontend.priority=$GOCD_ROUTING_LABEL_PRIORITY
+        - traefik.port=8153
+        - ${TRAEFIK_BASIC_AUTH}
+        - traefik.enable=true
+        # You'll need to set applicaiton's port here.
+        - traefik.tags=ingress 
+        - traefik.docker.network=${STACK_NAME:-technocore}_gocd
+        # Traefik service that listens to HTTP
+        - traefik.redirectorservice.frontend.entryPoints=http
+        - traefik.redirectorservice.frontend.redirect.entryPoint=https
+        # Traefik service that listens to HTTPS
+        - traefik.webservice.frontend.entryPoints=https
         - com.ouroboros.enable=true
       mode: global
       restart_policy:
@@ -59,16 +45,17 @@ services:
         constraints:
           - node.role == manager
       # Big services will need this modified or removed.
-      resources:
-        limits:
-          memory: 128M
-        reservations:
-          memory: 64M
-    environment:
+      #resources:
+      #  limits:
+      #    memory: 128M
+      #  reservations:
+      #    memory: 64M
+    #environment:
       # Sometimes you have to pass in ${DOMAIN} to enable the correct link paths to be generated.
       # Othertimes you can use http:// or https:// for the website. Weird trick.
-      - ADMIN_USER=${ADMIN_USER}
-    image: ${image_provider:-scififarms}/technocore-gocd:${TAG:-latest}
+      #- ADMIN_USER=${ADMIN_USER}
+    #image: ${image_provider:-scififarms}/technocore-gocd:${TAG:-latest}
+    image: gocd/gocd-server:v19.11.0
     logging:
       driver: "${LOGGING_DRIVER}"
       options:
@@ -76,24 +63,31 @@ services:
     networks:
       - gocd
       - gocd-private
-    #secrets:
-    #  - source: gocd_gocd_db_password
-    #    target: gocd_db_password
+    secrets:
+      - source: gocd_gocd_agent_1_password
+        target: gocd_agent_1_password
     volumes:
       # Likely need to change this
-      - gocd:/var/lib/gocd
+      - gocd:/godata
       # This should in fact be all upper case.
-      - ${DEV_MOUNT_gocd_SHELL_MIGRATIONS:-$EMPTY_MOUNT}
+      #- ${DEV_MOUNT_gocd_SHELL_MIGRATIONS:-$EMPTY_MOUNT}
 
-  gocd_db:
+  gocd_agent_1:
     deploy:
       labels:
         - com.ouroboros.enable=true
       mode: global
       restart_policy:
         condition: any
-    #environment:
-    image: ${image_provider:-scififarms}/technocore-gocd-db:${TAG:-latest}
+    environment:
+      - GO_SERVER_URL=https://gocd:8154/go
+      # https://docs.gocd.org/current/advanced_usage/agent_auto_register.html
+      - AGENT_AUTO_REGISTER_KEY={{"{{DOCKER-SECRET:gocd_password}}"}}
+      #- AGENT_AUTO_REGISTER_RESOURCES:
+      #- AGENT_AUTO_REGISTER_ENVIRONMENTS:
+      #- AGENT_AUTO_REGISTER_HOSTNAME: agent1
+    #image: ${image_provider:-scififarms}/technocore-gocd-db:${TAG:-latest}
+    image: gocd/gocd-agent-alpine-3.9:v19.11.0
     logging:
       driver: "${LOGGING_DRIVER}"
       options:
@@ -101,14 +95,8 @@ services:
     networks:
       - gocd-private
     secrets:
-      - source: gocd_db_admin_username
-        target: admin_username
-      - source: gocd_db_admin_password
-        target: admin_password
-      - source: gocd_db_gocd_username
-        target: gocd_username
-      - source: gocd_db_gocd_password
+      - source: gocd_agent_1_gocd_password
         target: gocd_password
     volumes:
       # Likely need to change this
-      - gocd-db:/var/lib/gocd
+      - gocd_agent_1:/godata
